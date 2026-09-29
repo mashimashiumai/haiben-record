@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>排便記録</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif;background:#f5f5f7;color:#222}
+header{padding:18px 18px 8px;text-align:center;background:#fff;position:sticky;top:0;z-index:2}
+h1{font-size:20px;margin:0 0 12px}.tabs{display:flex;gap:8px;justify-content:center}.tabs button{border:0;background:#eee;padding:8px 16px;border-radius:18px;font-size:14px}.tabs button.active{background:#222;color:#fff}
+main{max-width:520px;margin:auto;padding:16px}.panel{background:#fff;border-radius:16px;padding:16px;margin-bottom:14px}
+.record-btn{width:100%;height:110px;border:0;border-radius:18px;background:#222;color:#fff;font-size:25px;font-weight:700}
+.sub{font-size:13px;color:#777;text-align:center;margin:10px 0 0}
+.month{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.month button{border:0;background:#eee;border-radius:10px;width:38px;height:34px;font-size:20px}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}.dow{text-align:center;font-size:12px;color:#777;padding:4px}.day{min-height:62px;border:1px solid #eee;border-radius:10px;padding:6px;background:#fff;font-size:13px}.day.has{background:#f0f0f0;border-color:#bbb;font-weight:700}.times{display:block;margin-top:4px;font-size:11px;font-weight:400;line-height:1.45}
+.listrow{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid #eee}.listrow:last-child{border-bottom:0}.del{border:0;background:#eee;border-radius:8px;padding:6px 10px;color:#b00020}
+.action{width:100%;border:0;border-radius:12px;padding:12px;margin-top:8px;font-size:15px;background:#eee}.danger{color:#b00020}
+.hidden{display:none}.toast{position:fixed;left:50%;bottom:25px;transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:20px;font-size:13px;opacity:0;pointer-events:none;transition:.2s}.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<header><h1>排便記録</h1><div class="tabs"><button id="tabRecord" class="active">記録</button><button id="tabCal">カレンダー</button><button id="tabManage">管理</button></div></header>
+<main>
+<section id="record" class="panel">
+<button class="record-btn" id="recordBtn">排便を記録</button>
+<p class="sub">タップした時点の日付・時刻を自動記録します</p>
+</section>
+
+<section id="calendar" class="panel hidden">
+<div class="month"><button id="prev">‹</button><strong id="monthTitle"></strong><button id="next">›</button></div>
+<div class="cal" id="cal"></div>
+</section>
+
+<section id="manage" class="panel hidden">
+<button class="action" id="csvBtn">CSVを出力</button>
+<button class="action danger" id="clearBtn">すべての記録を削除</button>
+<div id="list" style="margin-top:12px"></div>
+</section>
+</main>
+<div id="toast" class="toast"></div>
+<script>
+const KEY="haiben_records_v1";
+let records=JSON.parse(localStorage.getItem(KEY)||"[]");
+let view=new Date(); view.setDate(1);
+
+function save(){localStorage.setItem(KEY,JSON.stringify(records))}
+function pad(n){return String(n).padStart(2,"0")}
+function fmtDate(d){return `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())}`}
+function fmtTime(d){return `${pad(d.getHours())}:${pad(d.getMinutes())}`}
+function toast(s){let t=document.getElementById("toast");t.textContent=s;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1300)}
+
+document.getElementById("recordBtn").onclick=()=>{
+  const d=new Date();
+  records.push({id:crypto.randomUUID(),date:fmtDate(d),time:fmtTime(d),ts:d.getTime()});
+  save(); render(); toast(`${fmtDate(d)} ${fmtTime(d)} に記録しました`);
+};
+
+function show(tab){
+  ["record","calendar","manage"].forEach(x=>document.getElementById(x).classList.toggle("hidden",x!==tab));
+  ["tabRecord","tabCal","tabManage"].forEach(x=>document.getElementById(x).classList.remove("active"));
+  document.getElementById(tab==="record"?"tabRecord":tab==="calendar"?"tabCal":"tabManage").classList.add("active");
+  render();
+}
+tabRecord.onclick=()=>show("record");tabCal.onclick=()=>show("calendar");tabManage.onclick=()=>show("manage");
+
+function renderCal(){
+ const y=view.getFullYear(),m=view.getMonth();
+ monthTitle.textContent=`${y}年${m+1}月`;
+ const first=new Date(y,m,1), start=first.getDay(), days=new Date(y,m+1,0).getDate();
+ cal.innerHTML=["日","月","火","水","木","金","土"].map(x=>`<div class="dow">${x}</div>`).join("");
+ for(let i=0;i<start;i++)cal.innerHTML+=`<div></div>`;
+ for(let day=1;day<=days;day++){
+   const date=`${y}/${pad(m+1)}/${pad(day)}`;
+   const ts=records.filter(r=>r.date===date).sort((a,b)=>a.ts-b.ts);
+   cal.innerHTML+=`<div class="day ${ts.length?"has":""}"><b>${day}</b>${ts.length?`<span class="times">${ts.map(r=>r.time).join("<br>")}</span>`:""}</div>`;
+ }
+}
+prev.onclick=()=>{view.setMonth(view.getMonth()-1);renderCal()}
+next.onclick=()=>{view.setMonth(view.getMonth()+1);renderCal()}
+
+function renderList(){
+ const list=document.getElementById("list");
+ const rs=[...records].sort((a,b)=>b.ts-a.ts);
+ list.innerHTML=rs.length?rs.map(r=>`<div class="listrow"><span>${r.date} ${r.time}</span><button class="del" data-id="${r.id}">削除</button></div>`).join(""):"<p style='color:#777;text-align:center'>記録はありません</p>";
+ list.querySelectorAll(".del").forEach(b=>b.onclick=()=>{
+   records=records.filter(r=>r.id!==b.dataset.id);save();renderList();renderCal();
+ });
+}
+csvBtn.onclick=()=>{
+ if(!records.length){toast("記録がありません");return}
+ const rows=[["日付","時間"],...records.sort((a,b)=>a.ts-b.ts).map(r=>[r.date,r.time])];
+ const csv="\ufeff"+rows.map(r=>r.map(v=>`"${String(v).replaceAll('"','""')}"`).join(",")).join("\r\n");
+ const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
+ const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="排便記録.csv";a.click();URL.revokeObjectURL(a.href);
+};
+clearBtn.onclick=()=>{
+ if(confirm("すべての記録を削除します。よろしいですか？")){records=[];save();render()}
+};
+function render(){renderCal();renderList()}
+render();
+</script>
+</body>
+</html>
